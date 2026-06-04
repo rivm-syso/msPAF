@@ -1,0 +1,48 @@
+mirror-develop-to-github:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    # Install dependencies
+    - apk add --no-cache git openssh-client rsync
+    # Set CI username
+    - git config --global user.name "GitLab CI"
+    - git config --global user.email "ci@gitlab.com"
+    # Setup SSH for GitHub
+    - mkdir -p ~/.ssh
+    - echo "$GITHUB_DEPLOY_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+  script:
+    # Clone GitHub repo
+    - git clone git@github.com:rivm-syso/msPAF.git github_repo
+    - cd github_repo
+    
+    # Delete all branches except the develop-branch from GitHub
+    - |
+      for branch in $(git branch -r | grep -v 'HEAD' | grep -v 'develop' | sed 's/origin\///'); do
+        if [ -n "$branch" ]; then
+          echo "Deleting branch: $branch"
+          git push origin --delete "$branch" || echo "Failed to delete $branch, continuing..."
+        fi
+      done
+    
+    # Copy fresh snapshot from GitLab develop-branch (without its .git)
+    - mkdir ../snapshot
+    - git clone --branch=develop --depth=1 "$CI_REPOSITORY_URL" ../snapshot
+    - rsync -a --delete --exclude='.git' ../snapshot/ .
+    
+    # Create orphan branch with no history, so no old-commits with "sensitive" info will be pushed to GitHub
+    - git checkout --orphan temp_develop
+    - git add .
+    - git commit -m "Current state of develop branch"
+    
+    # Replace develop branch with orphan (no history)
+    - git branch -D develop || true
+    - git branch -m develop
+    
+    # Force push to GitHub develop branch (single commit, no history)
+    - git push --force origin develop
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: on_success
+    - when: never

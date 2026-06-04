@@ -1,0 +1,24 @@
+Package: msPAF 
+Type: Package
+Title: calculate msPAF and related quantities
+Version: 1.94
+Author: jaap slootweg
+Maintainer: jaap slootweg<jaap.slootweg@rivm.nl>
+Description: multi substances Potentially Affected Fraction, Hazard Units and related quantities
+License: file LICENSE / GNU General Public License
+LazyData: TRUE
+Imports: 
+    R6,
+    openxlsx,
+    testthat,
+    dplyr,
+    tidyr
+RoxygenNote: 7.3.3
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+Encoding: UTF-8
+Config/testthat/edition: 3
+Depends: 
+    R (>= 3.5)
