@@ -1,6 +1,6 @@
 library(tidyverse)
 # CAS can be like xxx-xx-x, but converted to CAS:xxxxxx
-load("data/Gross2025dashCAS.rda")
+load("data/dashCASGross2025.rda")
 # Has a OtherChar - mapping ChemCode (like aquocode) to now substance_key
 OldOtherChar <- attr(Gross2025$Gross2025, which = "OtherChar")
 # update CAS, substance_key
@@ -21,5 +21,5 @@ OtherChar <- OldOtherChar |>
   bind_rows(OldCASdash)
 
 attr(Gross2025$Gross2025, which = "OtherChar") <- OtherChar
-usethis::use_data(Gross2025, overwrite = T)
-
+# not  usethis::use_data(Gross2025, overwrite = T); gives error when making SSDplusList
+saveRDS(Gross2025$Gross2025, file = "data/Gross2025.RDS")

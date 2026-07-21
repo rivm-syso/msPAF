@@ -47,5 +47,5 @@ SSD2026beta <- ssd_mu_sigma
 attr(SSD2026beta, which = "OtherChar") <- mapTable
 
 SSD2026beta <- list(SSD2026beta = SSD2026beta)
-usethis::use_data(SSD2026beta, overwrite = T)
-
+# usethis::use_data(SSD2026beta, overwrite = T)
+saveRDS(SSD2026beta, file = "data/SSD2026beta.RDS")
