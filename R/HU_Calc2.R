@@ -43,9 +43,9 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
   }
   # Rename columns to match expected names if they come from leesIMformat
   # ChemCode now contains the mapped CAS/identifier (from check_substance_codes)
-    # For now, we only have CAS values as id for SSD, we can prepare for the near future
+  # Make sure to have substance_key to match the format CAS:justthenumberNODASHES
   if (!"substance_key" %in% colnames(ChemData)){
-      ChemData$substance_key <- paste0("CAS:", ChemData$CAS)
+      ChemData$substance_key <- paste0("CAS:", gsub("-","",ChemData$CAS))
   }
 
   needDataColumns <- c("NaFiltering", "SampleID", "substance_key", "Concentration")
@@ -121,7 +121,7 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
     pKa <- 0.09018 + (2729.92 / (273.2 + EnvData$Tw[SampleMatch[iToHUisNH4]])) #NH3/NH4
     PAF$DissConc[iToHUisNH4] <- 1/(1+10^(pKa-EnvData$pH[SampleMatch[iToHUisNH4]])) * PAF$Concentration[iToHUisNH4]
     #remove others in samples
-    iToDel <- which(PAF$SampleID %in% PAF$SampleID[iToHUisNH4] & PAF$CAS == "CAS:7664-41-7") # == NH3
+    iToDel <- which(PAF$SampleID %in% PAF$SampleID[iToHUisNH4] & PAF$substance_key == "CAS:7664417") # == NH3
     if (length(iToDel) > 0 ){
       excluded_NH4_b <- PAF[iToDel, ]
       excluded_NH4_b$ExclusionReason <- "NH3 removed (NH4 is the measured value)"
