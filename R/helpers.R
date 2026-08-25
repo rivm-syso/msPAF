@@ -205,7 +205,7 @@ filter_limietsymbool <- function(inputData, inputwarnings, National, verbose, Us
       )
     }
     excluded_rows <- inputData[inputData$Limietsymbool == "<", keep_cols, drop=FALSE]
-    excluded_rows$ExclusionReason <- if (National == "Nederlands") "Limietsymbool <" else "Limietsymbool <"
+    excluded_rows$ExclusionReason <- if (National == "Nederlands") "Limietsymbool <" else "thresshold <"
     inputData <- inputData[inputData$Limietsymbool != "<", keep_cols, drop=FALSE]
   }
 
@@ -349,64 +349,27 @@ pivot_samples <- function(
   present_codes <- Modifyers$ModifMODname[Modifyers$ModifMODname %in% ModData[[code_col]]]
 
   for (VarName in present_codes) {
-    DataSamples <- DataSamples %>%
-      left_join(
-        ModData %>%
-          filter(!!sym(code_col) == VarName) %>%
-          select(SampleID, value = !!sym(value_col)),
+    DataSamples <- DataSamples |>
+      dplyr::left_join(
+        ModData |>
+          dplyr::filter(.data[[code_col]] == VarName) |>
+          dplyr::select(SampleID, value = .data[[value_col]]),
         by = "SampleID"
-      ) %>%
-      mutate(!!VarName := value) %>%
-      select(-value)
+      ) |>
+      dplyr::mutate(!!VarName := value) |>
+      dplyr::select(-value)
   }
   DataSamples
 }
 
 lookup_molweight <- function(inputData, SSDbron) {
-  # Check if CAS column exists in inputData
-  has_cas <- "Parameter.CASnummer" %in% colnames(inputData)
-  has_substance_key <- "substance_key" %in% colnames(inputData)
+  stopifnot("substance_key" %in% colnames(inputData))
 
-  # AquoCode join
-  out <- inputData %>%
-    left_join(SSDbron %>% select(AquoCode, CAS, MW.g.Mol) %>% filter(!is.na(AquoCode)),
-              by = c("Parameter.code" = "AquoCode")) %>%
-    rename(MW_g_Mol_1 = MW.g.Mol)
-
-  # Conditional CAS join
-  if (has_cas) {
-    out <- out %>%
-      left_join(SSDbron %>% select(AquoCode, CAS, MW.g.Mol) %>% filter(!is.na(CAS)),
-                by = c("Parameter.CASnummer" = "CAS")) %>%
-      rename(MW_g_Mol_2 = MW.g.Mol)
-  } else {
-    out$MW_g_Mol_2 <- NA
-  }
-
-  # Conditional substance_key join
-  if (has_substance_key) {
-    out <- out %>%
-      left_join(SSDbron %>% select(CAS, MW.g.Mol) %>% filter(!is.na(CAS)) %>%
-                  mutate(CAS_paste = paste0("CAS:", CAS)) %>%
-                  select(CAS_paste, MW.g.Mol) ,
-                by = c("substance_key" = "CAS_paste")) %>%
-      rename(MW_g_Mol_3 = MW.g.Mol)
-  } else {
-    out$MW_g_Mol_3 <- NA
-  }
-
-  # Prioritize: AquoCode match > CAS match > substance_key match
-  out %>%
-    mutate(
-      MW_g_Mol = case_when(
-        !is.na(MW_g_Mol_1) ~ MW_g_Mol_1,
-        !is.na(MW_g_Mol_2) ~ MW_g_Mol_2,
-        !is.na(MW_g_Mol_3) ~ MW_g_Mol_3,
-        TRUE ~ NA_real_
-      )
-    ) %>%
-    pull(MW_g_Mol)
+  inputData |>
+    dplyr::left_join(SSDbron |> dplyr::select(substance_key, MW.g.Mol) ) |>
+    dplyr::pull(MW.g.Mol)
 }
+
 #' Convert units and compute concentrations for mapped substances
 #'
 #' Assumes inputData already has correct CAS codes. Converts units, computes concentrations,
@@ -569,18 +532,20 @@ MatchChem_optReplace <- function(inputData, SSDbron, ChemReplace, inputwarnings,
     cas_digits <- gsub("[^0-9]", "", inputData$Parameter.CASnummer)
     inputData$Parameter.CASnummer <- sub("^(\\d+)(\\d{2})(\\d)$", "\\1-\\2-\\3", cas_digits)
 
-    ChemReplace <- ChemReplace %>% distinct(ChemCode, .keep_all = TRUE)
-    Lookup <- inputData %>% select(Parameter.code, Parameter.CASnummer) %>%
-      mutate(is_ec = startsWith(as.character(Parameter.code), "EC:")) %>%   # 1. Add EC flag
-      left_join(ChemReplace, by = c("Parameter.code" = "ChemCode")) %>%
-      rename(substance_key_1 = substance_key) %>%
-      left_join(ChemReplace, by = c("Parameter.CASnummer" = "ChemCode"))  %>%
-      mutate(substance_key = case_when(
+    ChemReplace <- ChemReplace |> dplyr::distinct(ChemCode, .keep_all = TRUE)
+
+    #return:
+    inputData |> dplyr::select(Parameter.code, Parameter.CASnummer) |>
+      dplyr::mutate(is_ec = startsWith(as.character(Parameter.code), "EC:")) |>   # 1. Add EC flag
+      dplyr::left_join(ChemReplace, by = c("Parameter.code" = "ChemCode")) |>
+      dplyr::rename(substance_key_1 = substance_key) |>
+      dplyr::left_join(ChemReplace, by = c("Parameter.CASnummer" = "ChemCode"))  |>
+      dplyr::mutate(substance_key = dplyr::case_when(
                  is_ec & !is.na(substance_key_1) ~ substance_key_1,  # EC match present: use it
                  !is.na(substance_key_1) ~ substance_key_1,          # code match present: use it
                  TRUE ~ substance_key                                # otherwise, use CAS match
-               )) %>%
-      pull(substance_key)
+               )) |>
+      dplyr::pull(substance_key)
   }
 
 }

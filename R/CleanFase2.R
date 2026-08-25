@@ -35,17 +35,19 @@ CleanFase2 <- function(inputData,
 
   # exclude rows with unknown SSD
   NoSSD <- which(!inputData$substance_key %in% SSDsubstanceData$substance_key)
-  NoSSDsubstance_key <- do.call( paste,
-                              inputData[NoSSD,] %>%
-                                pull(substance_key) %>% unique() %>% as.list())
-  inputwarnings$add("NoSSD",
-                    nl_text = paste("Stof heeft geen SSD : ", NoSSDsubstance_key),
-                    en_text = paste("Substance has no SSD", NoSSDsubstance_key),
-                    National = National)
-  NoSSDRows <- inputData[NoSSD,]
-  NoSSDRows$ExclusionReason <- "NoSSD"
-  excluded_rows <- dplyr::bind_rows(excluded_rows, NoSSDRows)
-  inputData <- inputData[-NoSSD, ]
+  if(length(NoSSD)){
+    NoSSDsubstance_key <- do.call( paste,
+                                   inputData[NoSSD,] |>
+                                     pull(substance_key) |> unique() |> as.list())
+    inputwarnings$add("NoSSD",
+                      nl_text = paste("Stof heeft geen SSD : ", NoSSDsubstance_key),
+                      en_text = paste("Substance has no SSD", NoSSDsubstance_key),
+                      National = National)
+    NoSSDRows <- inputData[NoSSD,]
+    NoSSDRows$ExclusionReason <- "NoSSD"
+    excluded_rows <- dplyr::bind_rows(excluded_rows, NoSSDRows)
+    inputData <- inputData[-NoSSD, ]
+  }
 
   # Mind the column use for chem.key in:?!
   conv_result <- convert_units_and_calculate_concentration(inputData, SSDsubstanceData, UnitConversions,
@@ -58,14 +60,14 @@ CleanFase2 <- function(inputData,
 
   # for multiple measurements of the same sample (time/place/filtration) we take the max value
   non_max_idx <- which(
-    inputData %>%
-      group_by(substance_key, SampleID, NaFiltering) %>%
-      mutate(
+    inputData |>
+      dplyr::group_by(substance_key, SampleID, NaFiltering) |>
+      dplyr::mutate(
         max_Concentration = max(Concentration, na.rm = TRUE)
-      ) %>%
-      ungroup() %>%
-      mutate(is_not_max = Concentration != max_Concentration | is.na(Concentration)) %>%
-      pull(is_not_max)
+      ) |>
+      dplyr::ungroup() |>
+      dplyr::mutate(is_not_max = Concentration != max_Concentration | is.na(Concentration)) |>
+      dplyr::pull(is_not_max)
   )
 
   if (length(non_max_idx) > 0){
@@ -83,15 +85,15 @@ CleanFase2 <- function(inputData,
   }
 
   # for samples with both a non-filtrated and a filtrated measurement, we take the filtered
-  non_filtered_indices <- inputData %>%
-    mutate(orig_row = row_number()) %>%  # add original row index
-    group_by(substance_key, SampleID) %>%
-    mutate(
+  non_filtered_indices <- inputData |>
+    dplyr::mutate(orig_row = dplyr::row_number()) |>  # add original row index
+    dplyr::group_by(substance_key, SampleID) |>
+    dplyr::mutate(
       has_T = any(NaFiltering == TRUE)
-    ) %>%
-    ungroup() %>%
-    filter(NaFiltering == FALSE, has_T) %>%
-    pull(orig_row)
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::filter(NaFiltering == FALSE, has_T) |>
+    dplyr::pull(orig_row)
 
   inputwarnings$add(
     "NonFilteredDuplicate",
