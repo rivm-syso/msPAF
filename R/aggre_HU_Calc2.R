@@ -10,7 +10,7 @@
 #' @export
 #'
 #' @examples
-aggre_HU_Calc2 <- function(CalcedHU, ChemData = Gross, zeros_PAF,
+aggre_HU_Calc2 <- function(CalcedHU, ChemData = Gross, zeros_PAF = NULL,
                            aggrFUN = max, agg_jaar = F,
                            TooLowLimit = 0.0001,
                            National, verbose = FALSE){
@@ -22,14 +22,14 @@ aggre_HU_Calc2 <- function(CalcedHU, ChemData = Gross, zeros_PAF,
 
   # local helper for mutate SampleID for jaar aggegation
   mutate2jaar <- function(inSamples){
-    calc_jaar <- inSamples %>% mutate(
-      jaar = as.Date(THEdate, format = "%d-%m-%Y") %>%
+    calc_jaar <- inSamples |> dplyr::mutate(
+      jaar = as.Date(THEdate, format = "%d-%m-%Y") |>
         format("%Y")
     )
     if (agg_jaar) {#global to upper function)
-      mutate(calc_jaar,
-             SampleID = paste(Meetobject.lokaalID, jaar, sep = ":")) %>%
-        return()
+      return(dplyr::mutate(calc_jaar,
+             SampleID = paste(Meetobject.lokaalID, jaar, sep = ":"))
+      )
     } else {
       return(calc_jaar)
     }
@@ -40,78 +40,89 @@ aggre_HU_Calc2 <- function(CalcedHU, ChemData = Gross, zeros_PAF,
 
   aggrFUN_name <- deparse(substitute(aggrFUN))
 
-  CalcedHU <- mutate2jaar(CalcedHU)
-
-  zeros_PAF <- mutate2jaar(zeros_PAF) %>%
-    mutate(ActConc = 0.0) %>%
-    select(substance_key, SampleID, ActConc, THEdate, jaar)
-
-
   # Preserve important columns for matching the aggregated data
   # This ensures we get columns from the row that produced the aggregated value
   preserved_cols_acute <- c("HU_acute", "Dev10Log_acute",
-                      "Avg10Log_acute", "groep.fotoNL",
-                      "PrimaryMoA" # "PAFacute", "PAFchronic", #"UseClass",
-                      )
-  preserved_cols_chronic <- c("HU_Chronic", "Dev10Log_chronic",
-                            "Avg10Log_chronic", "groep.fotoNL",
+                            "Avg10Log_acute", "groep.fotoNL",
                             "PrimaryMoA" # "PAFacute", "PAFchronic", #"UseClass",
+  )
+  preserved_cols_chronic <- c("HU_Chronic", "Dev10Log_chronic",
+                              "Avg10Log_chronic", "groep.fotoNL",
+                              "PrimaryMoA" # "PAFacute", "PAFchronic", #"UseClass",
   )
   preserved_cols_all <- c("Meetobject.lokaalID")
 
-  incl_zero_limit <- bind_rows(
-    CalcedHU %>% select(all_of(colnames(zeros_PAF))),
-    zeros_PAF)
+  CalcedHU <- mutate2jaar(CalcedHU) |>
+    dplyr::mutate(Parameter.code = ifelse(is.na(Parameter.code) | Parameter.code %in% c("", "NVT"),
+                                          substance_key,
+                                          Parameter.code))
 
-  # we will need all combo's of known, measured substances per samplesite
-  AllSamples <- incl_zero_limit %>%
-    select(SampleID) %>%
-    distinct()
+  if (!is.null(zeros_PAF)){
+    zeros_PAF <- mutate2jaar(zeros_PAF) |>
+      dplyr::mutate(ActConc = 0.0,
+                    Parameter.code = ifelse(is.na(Parameter.code) | Parameter.code %in% c("", "NVT"),
+                                            substance_key,
+                                            Parameter.code)) |>
+      dplyr::select(Parameter.code, substance_key, SampleID, ActConc, THEdate, jaar)
 
-  if (agg_jaar) {
-    aggTomsPAF <- incl_zero_limit %>%
-      group_by(substance_key, SampleID, jaar) %>%
-      summarise(
-        ActConc = aggrFUN(ActConc),
-        .groups = "drop"
-      ) %>%
-      filter(ActConc > 0)
-  } else { # max per sample already taken in clean2
-    aggTomsPAF <- incl_zero_limit %>%
-      filter(ActConc > 0)
+    incl_zero_limit <- dplyr::bind_rows(
+      CalcedHU |> dplyr::select(all_of(colnames(zeros_PAF))),
+      zeros_PAF)
+
+  } else {
+    incl_zero_limit <- CalcedHU |> dplyr::select(Parameter.code, substance_key, SampleID, ActConc, THEdate, jaar)
   }
 
-  rejoin_acute <- aggTomsPAF %>%
-    left_join(CalcedHU %>%
-        select(substance_key, SampleID, ActConc, all_of(preserved_cols_acute))) %>%
-        distinct() %>% # theoretically also multiple ActConc possible
+
+  # we will need all combo's of known, measured substances per samplesite
+  AllSamples <- incl_zero_limit |>
+    dplyr::select(SampleID) |>
+    dplyr::distinct()
+
+  if (agg_jaar) {
+    aggTomsPAF <- incl_zero_limit |>
+      dplyr::group_by(substance_key, SampleID, jaar) |>
+      dplyr::summarise(
+        ActConc = aggrFUN(ActConc),
+        .groups = "drop"
+      ) |>
+      dplyr::filter(ActConc > 0)
+  } else { # max per sample already taken in clean2
+    aggTomsPAF <- incl_zero_limit |>
+      dplyr::filter(ActConc > 0)
+  }
+
+  rejoin_acute <- aggTomsPAF |>
+    dplyr::left_join(CalcedHU |>
+        dplyr::select(substance_key, SampleID, ActConc, dplyr::all_of(preserved_cols_acute))) |>
+        dplyr::distinct() |> # theoretically also multiple ActConc possible
     # leave very low values out
-    filter(HU_acute > TooLowLimit) %>%
-    rename(HU = HU_acute,
+    dplyr::filter(HU_acute > TooLowLimit) |>
+    dplyr::rename(HU = HU_acute,
            Dev10Log = Dev10Log_acute,
            Avg10Log = Avg10Log_acute)
 
   msPAFacute <- HU2msPAF(rejoin_acute)
 
-  rejoin_chronic <- aggTomsPAF %>%
-    left_join(CalcedHU %>%
-                select(substance_key, SampleID, ActConc, all_of(preserved_cols_chronic))) %>%
-    distinct() %>% # theoretically also multiple ActConc possible
+  rejoin_chronic <- aggTomsPAF |>
+    dplyr::left_join(CalcedHU |>
+    dplyr::select(substance_key, SampleID, ActConc, dplyr::all_of(preserved_cols_chronic))) |>
+    dplyr::distinct() |> # theoretically also multiple ActConc possible
     # leave very low values out
-    filter(HU_Chronic > TooLowLimit) %>%
-    rename(HU = HU_Chronic,
+    dplyr::filter(HU_Chronic > TooLowLimit) |>
+    dplyr::rename(HU = HU_Chronic,
            Dev10Log = Dev10Log_chronic,
            Avg10Log = Avg10Log_chronic)
 
   msPAFchronic <- HU2msPAF(rejoin_chronic)
 
-  ClAll <- AllSamples %>%
-    left_join(msPAFacute %>% rename(Acute = msPAF)) %>%
-    left_join(msPAFchronic %>% rename(Chronic = msPAF))
+  ClAll <- AllSamples |>
+    dplyr::left_join(msPAFacute |> dplyr::rename(Acute = msPAF)) |>
+    dplyr::left_join(msPAFchronic |> dplyr::rename(Chronic = msPAF))
 
   if (National == "Nederlands") {
-    ClAll <- ClAll %>% mutate(
-      Class = case_when(
+    ClAll <- ClAll |> dplyr::mutate(
+      Class = dplyr::case_when(
         is.na(Acute) & Chronic > 0.05 ~ "Niet te bepalen (matig tot Zeer hoog)",
         is.na(Acute) & Chronic <= 0.05 & Chronic > 0.005 ~ "2-Gering",
         is.na(Acute) & Chronic <= 0.005 ~ "1-Geen",
@@ -126,8 +137,8 @@ aggre_HU_Calc2 <- function(CalcedHU, ChemData = Gross, zeros_PAF,
     )
   } else { #International
 
-    ClAll <- ClAll %>% mutate(
-        Class = case_when(
+    ClAll <- ClAll |> dplyr::mutate(
+        Class = dplyr::case_when(
           is.na(Acute) & Chronic > 0.05 ~ "Undetermined (moderate to high)",
           is.na(Acute) & Chronic <= 0.05 & Chronic > 0.005 ~ "2-Low (Gering)",
           is.na(Acute) & Chronic <= 0.005 ~ "1-None (Geen)",
@@ -142,27 +153,30 @@ aggre_HU_Calc2 <- function(CalcedHU, ChemData = Gross, zeros_PAF,
       )
   }
 
-  ClAllWide <- ClAll %>%
-    select(-Acute, -Chronic) %>%
+  ClAllWide <- ClAll |>
+    dplyr::select(-Acute, -Chronic) |>
     tidyr::pivot_wider(
       names_from = groep.fotoNL,          # Name of substance group TODO generalise
       values_from = Class,                # others to wide
       id_cols = SampleID                  # The id-column
     )
 
+  acute <- msPAFacute |>
+    tidyr::pivot_wider(
+      names_from = groep.fotoNL,          # Name of substance group TODO generalise
+      values_from = msPAF,          # others to wide
+      id_cols = SampleID                   # The id-column
+    )
+  chronic <- msPAFchronic |>
+    tidyr::pivot_wider(
+      names_from = groep.fotoNL,          # Name of substance group TODO generalise
+      values_from = msPAF,          # others to wide
+      id_cols = SampleID                   # The id-column
+    )
+
   return(list(
-    acute = msPAFacute %>%
-      tidyr::pivot_wider(
-        names_from = groep.fotoNL,          # Name of substance group TODO generalise
-        values_from = msPAF,          # others to wide
-        id_cols = SampleID                   # The id-column
-      ),
-    chronic = msPAFchronic %>%
-      tidyr::pivot_wider(
-        names_from = groep.fotoNL,          # Name of substance group TODO generalise
-        values_from = msPAF,          # others to wide
-        id_cols = SampleID                   # The id-column
-      ),
+    acute = acute,
+    chronic = chronic,
     class = ClAllWide,
     warning = Awarning
   ))

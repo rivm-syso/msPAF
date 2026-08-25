@@ -67,6 +67,9 @@ leesIMformat <- function(filename,
 
   inputData$orig_rownr <- seq_len(nrow(inputData))
 
+  # one can never be too robust
+  inputData$Limietsymbool <- as.character(inputData$Limietsymbool)
+
   # store for input to leesIMformat_app function below
   copy_inputData <- inputData
 
@@ -99,10 +102,6 @@ leesIMformat <- function(filename,
         inputwarnings = inputwarnings$warnings
       ))
     }
-  }
-  # For now, we only have CAS values as id for SSD, we can prepare for the near future
-  if (!"substance_key" %in% colnames(SSDbron)){
-    SSDbron$substance_key <- paste0("CAS:", SSDbron$CAS)
   }
 
   #names(inputData)
@@ -232,6 +231,23 @@ leesIMformat <- function(filename,
   # TODO warnings if PreTreatment T/F in same sample
   # TODO warnings if NH4 & NH3 in same sample, How to establish same sample if multiple samples per year?!
 
+  OtherCharAttr <- attr(SSDbron, which = "OtherChar")
+  if (is.null(OtherCharAttr)) {
+    inputwarnings$add("MissingOtherChar",
+                      nl_text = "Chem. key (aquocodes!) vertaling mist",
+                      en_text = "Chem. key translation table is missing",
+                      National)
+    inputData$substance_key <- inputData$Parameter.CASnummer
+  } else {
+    if (any(duplicated(OtherCharAttr$ChemCode))){
+      inputwarnings$add("duplic_OtherChar",
+                        nl_text = "Dubbele ChemCode in 'OtherChar'",
+                        en_text = "Duplication for ChemCode in 'OtherChar'",
+                        National)
+    }
+    inputData$substance_key <- MatchChem_optReplace(inputData, SSDbron, OtherCharAttr, inputwarnings, National)
+  }
+
   inputData$orig_Molweight <- lookup_molweight(inputData, SSDbron)
 
   #'   \item{T}{If Grootheid.code contains \code{"T"} but not \code{"Tw"}, all \code{"T"} are interpreted as water temperature (\code{"Tw"}).}
@@ -245,12 +261,12 @@ leesIMformat <- function(filename,
   #modifyers & substance matching
   ions <- c("Ca","Mg","Na","Cl")
   grootheden <- Modifyers$ModifMODname[!Modifyers$ModifMODname %in% ions]
-  MODgrootheden <- bind_rows(
+  MODgrootheden <- dplyr::bind_rows(
     inputData[inputData$Grootheid.code %in% Modifyers$ModifMODname,
               c("SampleID", "Grootheid.code", "Eenheid.code", "Numeriekewaarde")],
     inputData[inputData$Parameter.code %in% Modifyers$ModifMODname,
-              c("SampleID", "Parameter.code", "Eenheid.code", "Numeriekewaarde")] %>%
-      rename(Grootheid.code = Parameter.code) # sometimes I'm NOT happy with the aquocodes
+              c("SampleID", "Parameter.code", "Eenheid.code", "Numeriekewaarde")] |>
+    dplyr::rename(Grootheid.code = Parameter.code) # sometimes I'm NOT happy with the aquocodes
   )
   MODIons <-
     inputData[inputData$Parameter.code %in% ions,
@@ -295,50 +311,43 @@ leesIMformat <- function(filename,
   #for easier name handling in package
   #REPLACED inputData$ChemCode <- inputData$Parameter.code, BY
 
-  OtherCharAttr <- attr(SSDbron, which = "OtherChar")
-  if (is.null(OtherCharAttr)) {
-    inputwarnings$add("MissingOtherChar",
-                      nl_text = "Chem. key (aquocodes!) vertaling mist",
-                      en_text = "Chem. key translation table is missing",
-                      National)
-    inputData$substance_key <- inputData$Parameter.CASnummer
-  } else {
-    if (any(duplicated(OtherCharAttr$ChemCode))){
-      inputwarnings$add("duplic_OtherChar",
-                        nl_text = "Dubbele ChemCode in 'OtherChar'",
-                        en_text = "Duplication for ChemCode in 'OtherChar'",
-                        National)
-    }
-    inputData$substance_key <- MatchChem_optReplace(inputData, SSDbron, OtherCharAttr, inputwarnings, National)
+  # filter only substances
+  noSubstance <- which(is.na(inputData$substance_key) | nchar(inputData$substance_key) < 5)
+  if (length(noSubstance) > 0){
+    noSubParameters <- do.call( paste,
+      inputData[noSubstance,] |>
+      dplyr::pull(Parameter.code) |> unique() |> as.list())
+    inputwarnings$add("NoTox",
+                      nl_text = paste("Parameter.code niet als toxisch herkend voor: ", noSubParameters),
+                      en_text = paste("Substance not matched to toxic effect", noSubParameters),
+                      National = National)
+    noSubstanceRows <- inputData[noSubstance,]
+
+    noSubstanceRows$ExclusionReason <- "NoTox"
+    excluded_rows <- dplyr::bind_rows(excluded_rows, noSubstanceRows)
+    inputData <- inputData[-noSubstance, ]
   }
 
-  # filter only substances
-  noSubstance <- which(is.na(inputData$substance_key))
-  noSubParameters <- do.call( paste,
-    inputData[noSubstance,] %>%
-    pull(Parameter.code) %>% unique() %>% as.list())
-  inputwarnings$add("NoTox",
-                    nl_text = paste("Parameter.code niet als toxisch herkend voor: ", noSubParameters),
-                    en_text = paste("Substance not matched to toxic effect", noSubParameters),
-                    National = National)
-  noSubstanceRows <- inputData[noSubstance,]
-  noSubstanceRows$ExclusionReason <- "NoTox"
-  excluded_rows <- dplyr::bind_rows(excluded_rows, noSubstanceRows)
-  inputData <- inputData[-noSubstance, ]
-
   # TODO never cases like ??:
-  # inputData %>%
-  #      group_by(SampleID, substance_key) %>%
+  # inputData |>
+  #      group_by(SampleID, substance_key) |>
   #      summarise(
   #          has_empty = any(Limietsymbool == "" & PreTreatment == ""),
   #          has_lt    = any(Limietsymbool == "<" & PreTreatment == "nf")
-  #      ) %>%
+  #      ) |>
   #      filter(has_empty & has_lt)
 
   # Verify possible detection/quantification limit - by the < character ONLY now, we need substance_key and SampleID
   filter_result <- filter_limietsymbool(inputData, inputwarnings, National, verbose, UsedParameters, OptionalParameters)
   inputData <- filter_result$inputData
   excluded_rows <- dplyr::bind_rows(excluded_rows, filter_result$excluded_rows)
+
+  # remove 0 values for numerieke waarde ... avoid log(0) error, but measurements should be added for percentiles
+  filter_0 <- inputData$Numeriekewaarde == 0
+  waarde0 <- inputData[filter_0,] |>
+    dplyr::mutate(ExclusionReason = if (National == "Nederlands") "Concentratie 0" else "0.0 Concentration")
+  excluded_rows <- dplyr::bind_rows(excluded_rows, waarde0)
+  inputData <- inputData[!filter_0,]
 
   # REMOVED; prioritise usecase to allow multiple measurement (for example per year)
   # inputData <- clean_filtering_pairs(inputData, "PreTreatment", group_cols = "SampleID", National = National, inputwarnings = inputwarnings)

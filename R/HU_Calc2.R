@@ -30,7 +30,7 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
 
   if (!is.null(filter_expr)){
     filter_expr <- rlang::enquo(filter_expr)
-    ChemData <- ChemData %>% filter(!!filter_expr)
+    ChemData <- ChemData |> filter(!!filter_expr)
   }
 
 
@@ -69,14 +69,16 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
 
   #All all needed chemical data
   PAF$MOI <- ChemData$M.O.I[ChemMatch]
-  PAF$KocNew <- ChemData$KocNew[ChemMatch]
-  PAF$KocNew <- ifelse(is.na(PAF$KocNew), ChemData$logKpSuspendedMatter[ChemMatch], PAF$KocNew) #Add ED 3-1-22
-  PAF$PrimaryMoA <- ChemData$PrimaryMoA[ChemMatch]
-  PAF$Avg10Log_acute <- ChemData[ChemMatch,muNames["acute"]]
-  PAF$Dev10Log_acute <- ChemData[ChemMatch,sigmaNames["acute"]]
+  PAF$lgKoc <- ChemData$lgKoc[ChemMatch]
+  PAF$lgKoc <- ifelse(is.na(PAF$lgKoc), ChemData$logKpSuspendedMatter[ChemMatch], PAF$lgKoc) #Add ED 3-1-22, for metals
+  PAF$PrimaryMoA <- if("PrimaryMoA" %in% colnames(ChemData))
+    ChemData$PrimaryMoA[ChemMatch] else
+    PAF$substance_key
+  PAF$Avg10Log_acute <- ChemData[ChemMatch,] |> dplyr::pull(muNames["acute"])
+  PAF$Dev10Log_acute <- ChemData[ChemMatch,] |> dplyr::pull(sigmaNames["acute"])
   PAF$Dev10Log_acute[PAF$Dev10Log_acute < DevRange[1] | PAF$Dev10Log_acute > DevRange[2]] <- 0.7
-  PAF$Avg10Log_chronic <- ChemData[ChemMatch,muNames["chronic"]]
-  PAF$Dev10Log_chronic <- ChemData[ChemMatch,sigmaNames["chronic"]]
+  PAF$Avg10Log_chronic <- ChemData[ChemMatch,] |> dplyr::pull(muNames["chronic"])
+  PAF$Dev10Log_chronic <- ChemData[ChemMatch,] |> dplyr::pull(sigmaNames["chronic"])
   PAF$Dev10Log_chronic[PAF$Dev10Log_chronic < DevRange[1] | PAF$Dev10Log_chronic > DevRange[2]] <- 0.7
   PAF$UseClass <- ChemData$UseClass[ChemMatch]
   PAF$groep.fotoNL <- ChemData$groep.fotoNL[ChemMatch]
@@ -97,6 +99,7 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
   }
   PAF$TSS <- EnvData$TSS[SampleMatch]
 
+
   #save for NHx, Inorganic, all dissolved, all bioav.
   PAF$DissConc <- PAF$Concentration
   iToHUisNH4 <- which(PAF$Parameter.code == "sNH3NH4") #from specific dutch aquocode; sum of NH3 and NH4
@@ -105,7 +108,8 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
     pKa <- 0.09018 + (2729.92 / (273.2 + EnvData$Tw[SampleMatch[iToHUisNH4]])) #NH3/NH4
     PAF$DissConc[iToHUisNH4] <- 1/(1+10^(pKa-EnvData$pH[SampleMatch[iToHUisNH4]])) * PAF$Concentration[iToHUisNH4]
     #remove others in samples
-    iToDel <- which(PAF$SampleID %in% PAF$SampleID[iToHUisNH4] & PAF$substance_key %in% c("NH3", "NH4"))
+    iToDel <- which(PAF$SampleID %in% PAF$SampleID[iToHUisNH4] &
+                      PAF$substance_key %in% c("CAS:7664417", "CAS:14798039")) # c("NH3", "NH4"))
     if (length(iToDel) > 0 ){
       excluded_NH4_a <- PAF[iToDel, ]
       excluded_NH4_a$ExclusionReason <- "NH3/NH4 duplicate removed (sNH3NH4 exists)"
@@ -115,8 +119,8 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
       ChemMatch <- match(PAF$substance_key, ChemData$substance_key)
     }
   }
-  iToHUisNH4 <- which(PAF$Parameter.code == "NH4" | PAF$Parameter.CASnummer == "1479-03-9") # == NH4
-  # replaced by toxicant NH3, mind the "LeenSSD" for this!
+  iToHUisNH4 <- which(PAF$Parameter.code == "NH4" | PAF$substance_key == "CAS:14798039") # == NH4
+  # replaced by toxicant NH3, calculate [C] from f(HN4, Tw, pH)
   if(length(iToHUisNH4) > 0){
     pKa <- 0.09018 + (2729.92 / (273.2 + EnvData$Tw[SampleMatch[iToHUisNH4]])) #NH3/NH4
     PAF$DissConc[iToHUisNH4] <- 1/(1+10^(pKa-EnvData$pH[SampleMatch[iToHUisNH4]])) * PAF$Concentration[iToHUisNH4]
@@ -128,8 +132,9 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
       excluded_rows <- dplyr::bind_rows(excluded_rows, excluded_NH4_b)
       PAF <- PAF[-iToDel,]
       SampleMatch <- SampleMatch[-iToDel]
-      ChemMatch <- match(PAF$substance_key, ChemData$substance_key)
     }
+    PAF$substance_key[PAF$substance_key == "CAS:14798039"] <- "CAS:7664417" # == NH3
+    ChemMatch <- match(PAF$substance_key, ChemData$substance_key)
   }
 
 # Correction for bioavailability of metals/OC ---------------------------
@@ -142,7 +147,7 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
   #Correction of metal concentrations for bioavailability
   if (status_bioavailability) {
     PAF$DissConc[metals] <- ifelse(PAF$NaFiltering[metals], PAF$Concentration[metals],
-                                    PAF$Concentration[metals] / (1 + PAF$TSS[metals] * 10 ^ -6 * 10 ^ PAF$KocNew[metals])
+                                    PAF$Concentration[metals] / (1 + PAF$TSS[metals] * 10 ^ -6 * 10 ^ PAF$lgKoc[metals])
     )
   }
 
@@ -171,7 +176,7 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
     POC <- ModifierDefaults$`POC(mg/kg)` # TODO Check, not from EnvData ??
     PAF$ActConc[organic] <- ifelse(PAF$NaFiltering[organic], PAF$Concentration[organic],
                                     PAF$Concentration[organic] /
-                                      (1 + PAF$TSS[organic] * 10 ^ -6 * POC * 10 ^ -6 * 10 ^ PAF$KocNew[organic])
+                                      (1 + PAF$TSS[organic] * 10 ^ -6 * POC * 10 ^ -6 * 10 ^ PAF$lgKoc[organic])
     )
   }
 
@@ -202,11 +207,11 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
   #PAF$TooLowAcute <- ifelse(PAF$HU_acute < TooLowLimit, TooLowText, "")
   #PAF$TooLowChronic <- ifelse(PAF$HU_Chronic < TooLowLimit, TooLowText, "")
   if (!is.null(aggrFUN)) {
-    stop("TooLowLimit is not part of HU_Calc2 anymore. Please use the seperate function.")
+    stop("TooLowLimit is not part of HU_Calc2 anymore. Please use the separate function.")
   }
 
   #keep all relevant attributes
-  AllNames <- c("substance_key","UseClass",
+  AllNames <- c("Parameter.code", "substance_key","UseClass",
                 "Meetobject.lokaalID", "THEdate",
                 "Concentration", "ActConc", "NaFiltering",
                 "HU_acute", "HU_Chronic", "PAFacute", "PAFchronic",

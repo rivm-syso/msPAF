@@ -6,7 +6,9 @@ OldOtherChar <- attr(Gross2025$Gross2025, which = "OtherChar")
 # update CAS, substance_key
 Gross2025$Gross2025 <- Gross2025$Gross2025 |>
   rename(CASdash = CAS) |>
-  mutate(substance_key = paste("CAS", gsub("-","",CASdash), sep = ":") )
+  mutate(substance_key = paste("CAS", gsub("-","",CASdash), sep = ":") ) |>
+  filter(nchar(substance_key) > 5) |>
+  rename(lgKoc = KocNew)
 
 # also update OtherChar accordingly, but first add CASdash like code to OtherChar
 OldCASdash <- data.frame(
