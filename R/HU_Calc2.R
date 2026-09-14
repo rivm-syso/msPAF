@@ -69,7 +69,14 @@ HU_Calc2 <- function (ToHU, ChemData = Gross, filter_expr = NULL, EnvData = NULL
 
   #All all needed chemical data
   PAF$MOI <- ChemData$M.O.I[ChemMatch]
-  PAF$lgKoc <- ChemData$lgKoc[ChemMatch]
+  koc_column <- if ("lgKoc" %in% names(ChemData)) {
+    "lgKoc"
+  } else if ("KocNew" %in% names(ChemData)) {
+    "KocNew"
+  } else {
+    stop("ChemData is missing lgKoc or KocNew")
+  }
+  PAF$lgKoc <- ChemData[[koc_column]][ChemMatch]
   PAF$lgKoc <- ifelse(is.na(PAF$lgKoc), ChemData$logKpSuspendedMatter[ChemMatch], PAF$lgKoc) #Add ED 3-1-22, for metals
   PAF$PrimaryMoA <- if("PrimaryMoA" %in% colnames(ChemData))
     ChemData$PrimaryMoA[ChemMatch] else

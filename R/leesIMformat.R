@@ -204,7 +204,7 @@ leesIMformat <- function(filename,
       return(list(
         inputData = data.frame(),
         DataSamples = data.frame(),
-        inputwarnings = inputwarnings$data
+        inputwarnings = inputwarnings$warnings
       ))
     }
   }
