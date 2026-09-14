@@ -56,9 +56,11 @@ aggre_HU_Calc2 <- function(CalcedHU, ChemData = Gross, zeros_PAF = NULL,
     CalcedHU$Parameter.code <- CalcedHU$substance_key
   }
   CalcedHU <- mutate2jaar(CalcedHU) |>
-    dplyr::mutate(Parameter.code = ifelse(is.na(Parameter.code) | Parameter.code %in% c("", "NVT"),
-                                          substance_key,
-                                          Parameter.code))
+    dplyr::mutate(Parameter.code = as.character(ifelse(
+      is.na(Parameter.code) | Parameter.code %in% c("", "NVT"),
+      substance_key,
+      Parameter.code
+    )))
 
   if (!is.null(zeros_PAF)){
     if (!"Parameter.code" %in% names(zeros_PAF)) {
@@ -66,9 +68,11 @@ aggre_HU_Calc2 <- function(CalcedHU, ChemData = Gross, zeros_PAF = NULL,
     }
     zeros_PAF <- mutate2jaar(zeros_PAF) |>
       dplyr::mutate(ActConc = 0.0,
-                    Parameter.code = ifelse(is.na(Parameter.code) | Parameter.code %in% c("", "NVT"),
-                                            substance_key,
-                                            Parameter.code)) |>
+                    Parameter.code = as.character(ifelse(
+                      is.na(Parameter.code) | Parameter.code %in% c("", "NVT"),
+                      substance_key,
+                      Parameter.code
+                    ))) |>
       dplyr::select(Parameter.code, substance_key, SampleID, ActConc, THEdate, jaar)
 
     incl_zero_limit <- dplyr::bind_rows(
