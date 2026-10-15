@@ -11,11 +11,9 @@ aggre_HU_Calc2(
   aggrFUN = max,
   agg_jaar = F,
   TooLowLimit = 1e-04,
+  National,
   verbose = FALSE
 )
-}
-\arguments{
-\item{verbose}{}
 }
 \description{
 Title

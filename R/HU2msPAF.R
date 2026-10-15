@@ -7,13 +7,13 @@
 #' switched to AquoCode to force Response Addition
 #' @return data.frame with msPAF values
 #' @export
-HU2msPAF <- function(HU, TMOAname = "substance_key",
+HU2msPAF <- function(HU, TMOAname = "Parameter.code",
                       groupName = "groep.fotoNL")
 {
 
   if (nrow(HU) == 0) return(data.frame())
   #expected column names
-  stopifnot(all(c(TMOAname, groupName, "substance_key", # yes also for substance, formerly CAS
+  stopifnot(all(c(TMOAname, groupName, "Parameter.code", # yes also for substance, formerly CAS
                   "HU", "Dev10Log", "Avg10Log") %in% colnames(HU)))
 
   AggMsPAF <- function(df, l.AggrNames){ # call for groupName or all
@@ -21,15 +21,15 @@ HU2msPAF <- function(HU, TMOAname = "substance_key",
     AggTMOAnames <- c(l.AggrNames, TMOAname)
 
     #1 HU 2 msPAF, mixed model
-    SomHUTMOA <- df %>%
-      filter(!is.na(Dev10Log)) %>%
-      group_by(across(all_of(AggTMOAnames))) %>%
-      summarise(HU = sum(HU, na.rm = TRUE), .groups = "drop")
+    SomHUTMOA <- df |>
+      dplyr::filter(!is.na(Dev10Log)) |>
+      dplyr::group_by(dplyr::across(dplyr::all_of(AggTMOAnames))) |>
+      dplyr::summarise(HU = sum(HU, na.rm = TRUE), .groups = "drop")
 
-    AvgDevTMOA <- df %>%
-      filter(!is.na(Dev10Log)) %>%
-      group_by(across(all_of(AggTMOAnames))) %>%
-      summarise(Dev10Log = mean(Dev10Log, na.rm = TRUE), .groups = "drop")
+    AvgDevTMOA <- df |>
+      dplyr::filter(!is.na(Dev10Log)) |>
+      dplyr::group_by(dplyr::across(dplyr::all_of(AggTMOAnames))) |>
+      dplyr::summarise(Dev10Log = mean(Dev10Log, na.rm = TRUE), .groups = "drop")
 
     #conc addition from sum (above) + prep effect addition
     SomHUTMOA$RemainFrac <- 1 - pnorm(log10(SomHUTMOA$HU),

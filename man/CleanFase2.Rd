@@ -4,7 +4,7 @@
 \alias{CleanFase2}
 \title{Clean and Prepare Input Data for SSD Analysis}
 \usage{
-CleanFase2(inputData, SSDsubstanceData, inputwarnings)
+CleanFase2(inputData, SSDsubstanceData, init_inputwarnings, National)
 }
 \arguments{
 \item{inputData}{A `data.frame` containing measurement data. Must include columns such as \code{Concentration}, \code{substance_key}, \code{SampleID}, and \code{PreTreatment}.}

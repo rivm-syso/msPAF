@@ -13,6 +13,7 @@ HU_Calc2(
     "Chronic2.0Avg10LogMassTox.ug.L"),
   sigmaNames = c(acute = "Acute2.0Dev10LogMassTox.ug.L", chronic =
     "Chronic2.0Dev10LogMassTox.ug.L"),
+  National,
   DefaultFiltered = TRUE,
   aggrFUN = NULL,
   DevRange = c(0.2, 2),
