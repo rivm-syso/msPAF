@@ -68,7 +68,9 @@ leesIMformat <- function(filename,
   inputData$orig_rownr <- seq_len(nrow(inputData))
 
   # one can never be too robust
-  inputData$Limietsymbool <- as.character(inputData$Limietsymbool)
+  if ("Limietsymbool" %in% names(inputData)) {
+    inputData$Limietsymbool <- as.character(inputData$Limietsymbool)
+  }
 
   # store for input to leesIMformat_app function below
   copy_inputData <- inputData
@@ -204,7 +206,7 @@ leesIMformat <- function(filename,
       return(list(
         inputData = data.frame(),
         DataSamples = data.frame(),
-        inputwarnings = inputwarnings$data
+        inputwarnings = inputwarnings$warnings
       ))
     }
   }

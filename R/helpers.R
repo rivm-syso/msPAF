@@ -366,7 +366,13 @@ lookup_molweight <- function(inputData, SSDbron) {
   stopifnot("substance_key" %in% colnames(inputData))
 
   inputData |>
-    dplyr::left_join(SSDbron |> dplyr::select(substance_key, MW.g.Mol) ) |>
+    dplyr::left_join(
+      SSDbron |>
+        dplyr::filter(!is.na(CAS)) |>
+        dplyr::mutate(substance_key = paste0("CAS:", CAS)) |>
+        dplyr::select(substance_key, MW.g.Mol),
+      by = "substance_key"
+    ) |>
     dplyr::pull(MW.g.Mol)
 }
 
